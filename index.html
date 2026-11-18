@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Huber</title>
+<title>Carpooled</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Huber">
+<meta name="apple-mobile-web-app-title" content="Carpooled">
 <meta name="theme-color" content="#0b0b0c">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
@@ -18,16 +18,19 @@
   #map { position:fixed; inset:0; background:#1a1a1c; }
   .leaflet-control-attribution { font-size:9px; opacity:.7; }
 
-  #top { position:fixed; left:0; right:0; top:0; padding:calc(env(safe-area-inset-top) + 10px) 12px 0; z-index:1000;
-    display:flex; align-items:center; gap:8px; pointer-events:none; }
+  #top { position:fixed; left:0; right:0; top:0; padding:calc(env(safe-area-inset-top) + 10px) 12px 0; z-index:1000; pointer-events:none; }
   #top > * { pointer-events:auto; }
-  .pill { background:var(--bg); border:1px solid var(--line); border-radius:999px; padding:8px 14px; font-weight:700; letter-spacing:.3px; }
+  #bar { display:flex; align-items:center; gap:8px; pointer-events:none; }
+  #bar > * { pointer-events:auto; }
+  .pill { background:var(--bg); border:1px solid var(--line); border-radius:999px; padding:8px 14px; font-weight:700; letter-spacing:.3px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
   .pill small { font-weight:500; color:var(--dim); margin-left:6px; }
-  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#666; margin-right:6px; vertical-align:middle; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#666; vertical-align:middle; }
   .dot.on { background:var(--go); }
   .spacer { flex:1; }
-  .round { width:42px; height:42px; border-radius:50%; background:var(--bg); border:1px solid var(--line); color:var(--fg);
+  .round { width:42px; height:42px; flex:0 0 42px; padding:0; border-radius:50%; background:var(--bg); border:1px solid var(--line); color:var(--fg);
     font-size:18px; display:grid; place-items:center; }
+  #alert { display:none; margin-top:8px; background:var(--go); color:#04210f; font-weight:700; border-radius:12px; padding:11px 12px; }
 
   #sheet { position:fixed; left:0; right:0; bottom:0; z-index:1000; background:var(--bg); border-top:1px solid var(--line);
     border-radius:18px 18px 0 0; padding:14px 16px calc(env(safe-area-inset-bottom) + 14px); }
@@ -35,17 +38,16 @@
   #headline { font-size:26px; font-weight:800; letter-spacing:-.3px; }
   #sub { color:var(--dim); font-size:14px; margin-top:2px; min-height:19px; }
   .row { display:flex; gap:10px; margin-top:12px; }
-  button { font:inherit; border:0; border-radius:14px; padding:14px 12px; font-weight:700; color:var(--fg); background:var(--card);
+  button { font:inherit; border-radius:14px; padding:14px 12px; font-weight:700; color:var(--fg); background:var(--card);
     border:1px solid var(--line); flex:1; }
   button.primary { background:var(--fg); color:#000; border-color:var(--fg); }
   button.go { background:var(--go); color:#04210f; border-color:var(--go); }
-  button.ghost { flex:0 0 auto; }
   button:active { transform:scale(.98); }
 
   .overlay { position:fixed; inset:0; z-index:2000; background:var(--bg); display:none; overflow:auto;
     padding:calc(env(safe-area-inset-top) + 28px) 22px calc(env(safe-area-inset-bottom) + 22px); }
   .overlay.show { display:block; }
-  .overlay h1 { font-size:44px; margin:0; letter-spacing:-1.5px; }
+  .overlay h1 { font-size:40px; margin:0; letter-spacing:-1.5px; }
   .overlay p { color:var(--dim); margin:8px 0 18px; }
   .overlay h2 { font-size:14px; text-transform:uppercase; letter-spacing:1px; color:var(--dim); margin:22px 0 8px; }
   .choice { display:flex; gap:10px; }
@@ -56,6 +58,10 @@
   .stack > * { width:100%; margin-top:10px; display:block; }
   .note { font-size:13px; color:var(--dim); margin-top:14px; }
   .err { color:var(--warn); font-size:14px; margin-top:10px; min-height:20px; }
+  .pairRow { text-align:left; display:flex !important; align-items:center; gap:10px; }
+  .pairRow.sel { border-color:var(--fg); }
+  .pairRow small { color:var(--dim); font-weight:500; margin-left:auto; }
+  .pairRow.sel small::after { content:' · on screen'; }
 
   .mk { width:38px; height:38px; border-radius:50%; display:grid; place-items:center; font-size:20px; background:#fff;
     border:3px solid #111; box-shadow:0 2px 8px rgba(0,0,0,.5); }
@@ -68,11 +74,14 @@
 <div id="map"></div>
 
 <div id="top">
-  <div class="pill">Huber<small id="roleTag"></small></div>
-  <div class="pill" id="net" style="font-weight:500;font-size:13px"><span class="dot" id="netDot"></span><span id="netTxt">offline</span></div>
-  <div class="spacer"></div>
-  <button class="round" id="recenter" title="Recenter" style="flex:0 0 42px;padding:0">◎</button>
-  <button class="round" id="gear" title="Settings" style="flex:0 0 42px;padding:0">⚙</button>
+  <div id="bar">
+    <div class="pill" id="pairPill">Carpooled<small id="pairTag"></small></div>
+    <div class="pill" style="flex:0 0 auto;padding:8px 12px"><span class="dot" id="netDot"></span></div>
+    <div class="spacer"></div>
+    <button class="round" id="recenter" title="Recenter">◎</button>
+    <button class="round" id="gear" title="Settings">⚙</button>
+  </div>
+  <div id="alert"></div>
 </div>
 
 <div id="sheet">
@@ -85,48 +94,53 @@
   </div>
 </div>
 
-<!-- Setup -->
+<!-- Setup / add a pairing -->
 <div class="overlay" id="setup">
-  <h1>Huber</h1>
-  <p>Husband Uber. Two phones, one map.</p>
-  <h2>This phone belongs to</h2>
+  <h1>Carpooled</h1>
+  <p>Two phones, one map, one pickup.</p>
+  <h2>For this pairing, this phone is</h2>
   <div class="choice">
     <button data-role="driver"><span>🚗</span>The driver</button>
-    <button data-role="rider"><span>🙋‍♀️</span>The rider</button>
+    <button data-role="rider"><span>🙋</span>The rider</button>
   </div>
+  <h2>Who is on the other phone?</h2>
+  <input id="nameIn" placeholder="e.g. Mum, Dad, Sam" maxlength="24" autocomplete="off">
   <div id="pairNew">
     <h2>Pairing</h2>
     <div class="stack">
-      <button class="primary" id="createBtn">Create a new pair</button>
-      <input id="codeIn" placeholder="…or paste the invite link / code" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="primary" id="createBtn">Create a new pairing</button>
+      <input id="codeIn" placeholder="…or paste an invite link / code" autocomplete="off" autocapitalize="off" spellcheck="false">
       <button id="joinBtn">Join with that code</button>
     </div>
   </div>
   <div id="pairLink" style="display:none">
     <h2>Pairing</h2>
-    <p style="margin:0">Invite link detected — pick who you are and tap Join.</p>
+    <p style="margin:0">Invite link detected — fill in the two things above and tap Join.</p>
     <div class="stack"><button class="primary" id="joinLinkBtn">Join</button></div>
   </div>
   <div class="err" id="setupErr"></div>
-  <div class="note">Locations are encrypted on your phones with the pairing code before they leave; the relay in the middle only sees scrambled data. Keep the invite link between the two of you.</div>
+  <div class="stack"><button id="cancelSetup" style="display:none">Cancel</button></div>
+  <div class="note">Locations are encrypted on your phones with the pairing code before they leave; the relay in the middle only sees scrambled data. Keep each invite link between the two people it is for.</div>
 </div>
 
 <!-- Settings -->
 <div class="overlay" id="settings">
-  <h1 style="font-size:32px">Settings</h1>
-  <h2>Invite the other phone</h2>
+  <h1 style="font-size:32px">Pairings</h1>
+  <div class="stack" id="pairList"></div>
+  <div class="stack"><button id="addPair">+ Add a pairing</button></div>
+  <h2 id="curTitle">This pairing</h2>
   <div class="stack">
+    <input id="renameIn" maxlength="24" autocomplete="off">
     <input id="linkOut" readonly>
     <button class="primary" id="sendLink">Share invite link</button>
   </div>
   <div class="err" id="linkMsg"></div>
-  <h2>This phone</h2>
   <div class="stack">
-    <button id="swapRole">Switch role</button>
-    <button id="unpair">Unpair this phone</button>
+    <button id="swapRole">Switch my role in this pairing</button>
+    <button id="unpair">Remove this pairing</button>
     <button id="closeSettings" class="primary">Back to map</button>
   </div>
-  <div class="note">Huber only tracks while the page is open and the screen is on. Phones stop web pages from reading location in the background — keep it open during a pickup.</div>
+  <div class="note">Your location goes only to the pairing on screen. Requests from your other pairings still come through and show as a green bar at the top. Carpooled only tracks while the page is open and the screen is on.</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -137,22 +151,29 @@
 const $ = id => document.getElementById(id);
 const BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
 const STALE_MS = 45000, HEARTBEAT_MS = 15000, MIN_SEND_MS = 3000;
+const RESUME_MS = 3 * 3600 * 1000;      // trips / requests older than this are not resumed
 const OTHER = { driver: 'rider', rider: 'driver' };
-const EMOJI = { driver: '🚗', rider: '🙋‍♀️' };
-const NAME = { driver: 'Your driver', rider: 'Your rider' };
+const EMOJI = { driver: '🚗', rider: '🙋' };
 
 // ---------- storage ----------
-const store = {
-  get() { try { return JSON.parse(localStorage.getItem('huber') || 'null'); } catch { return null; } },
-  set(v) { try { localStorage.setItem('huber', JSON.stringify(v)); } catch {} },
-  clear() { try { localStorage.removeItem('huber'); } catch {} }
-};
-let cfg = store.get();
-const RESUME_MS = 3 * 3600 * 1000;   // a trip older than this is not resumed
+function loadStore() {
+  try {
+    const v = JSON.parse(localStorage.getItem('carpooled') || 'null');
+    if (v && v.id && Array.isArray(v.pairs)) return v;
+    const old = JSON.parse(localStorage.getItem('huber') || 'null');      // from the first version
+    if (old && old.code) return { id: old.id, active: old.code, pairs: [{ code: old.code, role: old.role, name: 'My pairing' }] };
+  } catch {}
+  return { id: Math.random().toString(36).slice(2, 10), active: null, pairs: [] };
+}
+const my = loadStore();
+function saveStore() {
+  my.pairs = pairs.map(p => ({ code: p.code, role: p.role, name: p.name })); my.active = cur ? cur.code : null;
+  try { localStorage.setItem('carpooled', JSON.stringify(my)); } catch {}
+}
 const sess = {
-  save() { try { localStorage.setItem('huber-s', JSON.stringify({ sharing, st: myStatus, t: Date.now() })); } catch {} },
-  load() { try { const v = JSON.parse(localStorage.getItem('huber-s') || 'null'); return v && Date.now() - v.t < RESUME_MS ? v : null; } catch { return null; } },
-  clear() { try { localStorage.removeItem('huber-s'); } catch {} }
+  save() { const st = {}; for (const p of pairs) st[p.code] = p.st;
+    try { localStorage.setItem('carpooled-s', JSON.stringify({ sharing, st, t: Date.now() })); } catch {} },
+  load() { try { const v = JSON.parse(localStorage.getItem('carpooled-s') || 'null'); return v && Date.now() - v.t < RESUME_MS ? v : null; } catch { return null; } }
 };
 
 // ---------- crypto ----------
@@ -160,23 +181,22 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 const b64 = u8 => btoa(String.fromCharCode(...u8));
 const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-let key = null, topicBase = null;
-async function deriveKeys(code) {
-  const k = await crypto.subtle.digest('SHA-256', enc.encode('huber-key:' + code));
-  key = await crypto.subtle.importKey('raw', k, 'AES-GCM', false, ['encrypt', 'decrypt']);
-  const t = await crypto.subtle.digest('SHA-256', enc.encode('huber-topic:' + code));
-  topicBase = 'huber/' + hex(t).slice(0, 32);
+async function mkPair(rec) {   // key strings keep the old "huber" prefix so existing pairings still work
+  const k = await crypto.subtle.digest('SHA-256', enc.encode('huber-key:' + rec.code));
+  const key = await crypto.subtle.importKey('raw', k, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  const t = await crypto.subtle.digest('SHA-256', enc.encode('huber-topic:' + rec.code));
+  return { code: rec.code, role: rec.role, name: rec.name || 'Pairing', key, topic: 'huber/' + hex(t).slice(0, 32),
+    peer: null, peerAt: 0, lastT: 0, st: 'idle', clash: false };
 }
-async function seal(obj) {
+async function seal(key, obj) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(obj))));
   const out = new Uint8Array(12 + ct.length); out.set(iv); out.set(ct, 12);
   return b64(out);
 }
-async function open(s) {
+async function unseal(key, s) {
   const raw = unb64(s);
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, key, raw.slice(12));
-  return JSON.parse(dec.decode(pt));
+  return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, key, raw.slice(12))));
 }
 function newCode() {
   const A = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -190,13 +210,11 @@ function parseCode(s) {
 }
 
 // ---------- state ----------
-let me = null;            // {lat,lng,acc}
-let peer = null;          // last message from other phone
-let peerAt = 0;           // local receipt time
-let myStatus = 'idle';    // rider: idle|want   driver: idle|onway|here
+let pairs = [], cur = null;   // cur = the pairing on screen; only it receives my location
+let me = null;                // {lat,lng,acc}
 let sharing = false, watchId = null, wake = null, lastSent = 0, hb = null;
 let route = null, routeAt = 0, routeFrom = null;
-let follow = true, roleClash = false;
+let follow = true, alertPair = null;
 const clients = [];
 
 // ---------- map ----------
@@ -209,13 +227,14 @@ map.on('zoomend moveend', () => setTimeout(() => mapEl.classList.add('glide'), 5
 const icon = (role, mine, stale) => L.divIcon({ className: '', iconSize: [38, 38], iconAnchor: [19, 19],
   html: `<div class="mk${mine ? ' me' : ''}${stale ? ' stale' : ''}">${EMOJI[role]}</div>` });
 let mkMe = null, mkPeer = null, accMe = null, routeLine = null;
+function clearRoute() { route = null; routeFrom = null; if (routeLine) { routeLine.remove(); routeLine = null; } }
 
 function fit() {
-  if (!follow) return;
+  if (!follow || !cur) return;
   const pts = [];
   if (me) pts.push([me.lat, me.lng]);
-  if (peer && !peer.off) pts.push([peer.lat, peer.lng]);
-  const pad = { paddingTopLeft: [40, 90], paddingBottomRight: [40, $('sheet').offsetHeight + 30], maxZoom: 16 };
+  if (cur.peer && !cur.peer.off) pts.push([cur.peer.lat, cur.peer.lng]);
+  const pad = { paddingTopLeft: [40, 100], paddingBottomRight: [40, $('sheet').offsetHeight + 30], maxZoom: 16 };
   if (pts.length === 2) map.fitBounds(pts, pad);
   else if (pts.length === 1) map.setView(pts[0], Math.max(map.getZoom(), 15));
 }
@@ -228,114 +247,133 @@ function meters(a, b) {
 }
 const fmtDist = m => m < 160 ? Math.round(m * 3.28084 / 10) * 10 + ' ft' : (m / 1609.34).toFixed(m < 16093 ? 1 : 0) + ' mi';
 const fmtMin = s => s < 60 ? '< 1 min' : Math.round(s / 60) + ' min';
-function ago(ms) { const s = Math.round(ms / 1000); return s < 5 ? 'just now' : s < 90 ? s + 's ago' : Math.round(s / 60) + ' min ago'; }
+function ago(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return s < 5 ? 'just now' : s < 90 ? s + 's ago' : s < 5400 ? Math.round(s / 60) + ' min ago' : Math.round(s / 3600) + ' h ago';
+}
 
 // ---------- routing (driving ETA) ----------
 async function updateRoute() {
-  if (!me || !peer || peer.off) return;
-  const d = cfg.role === 'driver' ? me : peer, r = cfg.role === 'driver' ? peer : me;
+  const p = cur;
+  if (!p || !me || !p.peer || p.peer.off) return;
+  const d = p.role === 'driver' ? me : p.peer, r = p.role === 'driver' ? p.peer : me;
   const now = Date.now();
-  if (route && now - routeAt < 20000 && routeFrom && meters(routeFrom, d) < 120) return;
+  if (now - routeAt < 20000 && routeFrom && meters(routeFrom, d) < 120) return;
   routeAt = now; routeFrom = { lat: d.lat, lng: d.lng };
   try {
     const u = `https://router.project-osrm.org/route/v1/driving/${d.lng},${d.lat};${r.lng},${r.lat}?overview=full&geometries=geojson`;
     const j = await (await fetch(u)).json();
+    if (p !== cur) return;
     if (j.code !== 'Ok') throw 0;
     route = { dur: j.routes[0].duration, dist: j.routes[0].distance };
     const ll = j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
     if (routeLine) routeLine.setLatLngs(ll); else routeLine = L.polyline(ll, { color: '#111', weight: 5, opacity: .85 }).addTo(map);
-  } catch { route = null; if (routeLine) { routeLine.remove(); routeLine = null; } }
+  } catch { if (p === cur) { route = null; if (routeLine) { routeLine.remove(); routeLine = null; } } }
   render();
 }
 
 // ---------- render ----------
 function render() {
-  if (!cfg) return;
-  $('roleTag').textContent = cfg.role;
-  const on = clients.some(c => c.connected);
-  $('netDot').className = 'dot' + (on ? ' on' : '');
-  $('netTxt').textContent = on ? 'connected' : 'connecting…';
+  if (!cur) return;
+  const p = cur;
+  $('pairTag').textContent = p.name + ' ▾';
+  $('netDot').className = 'dot' + (clients.some(c => c.connected) ? ' on' : '');
 
   if (me) {
-    const p = [me.lat, me.lng];
-    if (mkMe) mkMe.setLatLng(p); else mkMe = L.marker(p, { icon: icon(cfg.role, true), zIndexOffset: 500 }).addTo(map);
-    if (accMe) accMe.setLatLng(p).setRadius(me.acc || 0);
-    else accMe = L.circle(p, { radius: me.acc || 0, color: '#4c8dff', weight: 1, fillOpacity: .12 }).addTo(map);
+    const ll = [me.lat, me.lng];
+    if (mkMe) mkMe.setLatLng(ll).setIcon(icon(p.role, true)); else mkMe = L.marker(ll, { icon: icon(p.role, true), zIndexOffset: 500 }).addTo(map);
+    if (accMe) accMe.setLatLng(ll).setRadius(me.acc || 0);
+    else accMe = L.circle(ll, { radius: me.acc || 0, color: '#4c8dff', weight: 1, fillOpacity: .12 }).addTo(map);
   }
-  const live = peer && !peer.off, stale = live && Date.now() - peerAt > STALE_MS;
+  const peer = p.peer, live = peer && !peer.off, stale = live && Date.now() - p.peerAt > STALE_MS;
   if (live) {
-    const p = [peer.lat, peer.lng];
-    if (mkPeer) mkPeer.setLatLng(p).setIcon(icon(OTHER[cfg.role], false, stale));
-    else mkPeer = L.marker(p, { icon: icon(OTHER[cfg.role], false, stale), zIndexOffset: 600 }).addTo(map);
-  } else if (mkPeer) { mkPeer.remove(); mkPeer = null; if (routeLine) { routeLine.remove(); routeLine = null; } route = null; }
+    const ll = [peer.lat, peer.lng];
+    if (mkPeer) mkPeer.setLatLng(ll).setIcon(icon(OTHER[p.role], false, stale));
+    else mkPeer = L.marker(ll, { icon: icon(OTHER[p.role], false, stale), zIndexOffset: 600 }).addTo(map);
+  } else { if (mkPeer) { mkPeer.remove(); mkPeer = null; } clearRoute(); }
 
-  const other = NAME[OTHER[cfg.role]];
+  const other = p.name;
   let head, sub;
-  if (roleClash) { head = 'Both phones are “' + cfg.role + '”'; sub = 'Switch one of them in ⚙ Settings.'; }
-  else if (!peer) { head = 'Waiting…'; sub = other + ' hasn’t opened Huber yet.'; }
+  if (p.clash) { head = 'Both phones are “' + p.role + '”'; sub = 'Switch one of them in ⚙ Settings.'; }
+  else if (!peer) { head = 'Waiting…'; sub = other + ' hasn’t opened Carpooled yet.'; }
   else if (peer.off && peer.wait) { head = 'Locating…'; sub = other + ' is getting a GPS fix.'; }
-  else if (peer.off) { head = 'Not sharing'; sub = other + ' stopped sharing location.'; }
+  else if (peer.off) { head = 'Not sharing'; sub = other + ' isn’t sharing location with you right now.'; }
   else if (!me) { head = other + ' is live'; sub = 'Start sharing to see distance and ETA.'; }
   else {
     const crow = meters(me, peer);
     if (crow < 60) head = 'You’re together 🎉';
     else if (route) head = fmtMin(route.dur) + ' · ' + fmtDist(route.dist);
     else head = fmtDist(crow) + ' apart';
-    const enroute = (cfg.role === 'driver' ? myStatus : peer.st) === 'onway';
-    sub = (stale ? 'Last seen ' : 'Updated ') + ago(Date.now() - peerAt) + (route || crow < 60 ? '' : ' · straight-line distance');
+    const enroute = (p.role === 'driver' ? p.st : peer.st) === 'onway';
+    sub = (stale ? 'Last seen ' : 'Updated ') + ago(Date.now() - p.peerAt) + (route || crow < 60 ? '' : ' · straight-line distance');
     if (route && enroute && crow >= 60) sub = 'Arrives ' + new Date(Date.now() + route.dur * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ' · ' + sub.toLowerCase();
   }
   $('headline').textContent = head; $('sub').textContent = sub;
 
-  // status banner + action button
   const b = $('banner'), a = $('actBtn'); let bt = '', at = '', cls = '';
   const ps = peer ? peer.st : 'idle';
-  if (cfg.role === 'rider') {
-    if (ps === 'here') bt = '🚗 Your Huber has arrived';
-    else if (ps === 'onway') bt = '🚗 Your Huber is on the way';
-    else if (myStatus === 'want') bt = 'Pickup requested — waiting for driver';
-    at = myStatus === 'want' ? 'Cancel request' : (ps === 'idle' ? 'Pick me up' : '');
-    cls = myStatus === 'want' ? '' : 'go';
+  if (p.role === 'rider') {
+    if (ps === 'here') bt = '🚗 ' + other + ' has arrived';
+    else if (ps === 'onway') bt = '🚗 ' + other + ' is on the way';
+    else if (p.st === 'want') bt = 'Pickup requested — waiting for ' + other;
+    at = p.st === 'want' ? 'Cancel request' : (ps === 'idle' ? 'Pick me up' : '');
+    cls = p.st === 'want' ? '' : 'go';
   } else {
-    if (ps === 'want' && myStatus === 'idle') bt = '🙋‍♀️ Pickup requested!';
-    at = myStatus === 'idle' ? 'On my way' : myStatus === 'onway' ? 'I’m here' : 'Trip done';
-    cls = myStatus === 'idle' && ps === 'want' ? 'go' : '';
+    if (ps === 'want' && p.st === 'idle') bt = '🙋 ' + other + ' requested a pickup!';
+    at = p.st === 'idle' ? 'On my way' : p.st === 'onway' ? 'I’m here' : 'Trip done';
+    cls = p.st === 'idle' && ps === 'want' ? 'go' : '';
   }
   b.style.display = bt ? 'block' : 'none'; b.textContent = bt;
   a.style.display = at ? 'block' : 'none'; a.textContent = at; a.className = cls;
   $('shareBtn').textContent = sharing ? 'Stop sharing' : 'Start sharing my location';
   $('shareBtn').className = sharing ? '' : 'primary';
 }
+function showAlert(p) {
+  const s = p.peer.st;
+  alertPair = p;
+  $('alert').textContent = (s === 'want' ? '🙋 ' + p.name + ' requested a pickup' : s === 'onway' ? '🚗 ' + p.name + ' is on the way' : '🚗 ' + p.name + ' has arrived') + ' — tap to open';
+  $('alert').style.display = 'block';
+}
+function hideAlert() { alertPair = null; $('alert').style.display = 'none'; }
+$('alert').onclick = () => { if (alertPair) switchTo(alertPair); };
 
 // ---------- network ----------
+function publish(topic, payload) { for (const c of clients) if (c.connected) c.publish(topic, payload, { qos: 0, retain: true }); }
 async function send(force) {
-  if (!cfg || !key) return;
+  if (!cur) return;
   const now = Date.now();
   if (!force && now - lastSent < MIN_SEND_MS) return;
   lastSent = now;
-  const msg = sharing && me
-    ? { r: cfg.role, id: cfg.id, t: now, lat: +me.lat.toFixed(6), lng: +me.lng.toFixed(6), acc: Math.round(me.acc || 0), st: myStatus }
-    : { r: cfg.role, id: cfg.id, t: now, off: true, wait: sharing, st: myStatus };
-  const payload = await seal(msg);
-  for (const c of clients) if (c.connected) c.publish(topicBase + '/' + cfg.role, payload, { qos: 0, retain: true });
+  for (const p of pairs.slice()) {
+    if (p !== cur && !force) continue;                    // other pairings only get status changes, never position
+    const msg = p === cur && sharing && me
+      ? { r: p.role, id: my.id, t: now, lat: +me.lat.toFixed(6), lng: +me.lng.toFixed(6), acc: Math.round(me.acc || 0), st: p.st }
+      : { r: p.role, id: my.id, t: now, off: true, wait: p === cur && sharing, st: p.st };
+    publish(p.topic + '/' + p.role, await seal(p.key, msg));
+  }
 }
-async function onMessage(_topic, buf) {
-  let m; try { m = await open(buf.toString()); } catch { return; }
-  if (m.id === cfg.id) return;
-  if (m.r === cfg.role) { roleClash = true; render(); return; }
-  roleClash = false;
-  if (peer && m.t <= peer.t) return;           // duplicate from second relay, or old
-  const prev = peer ? peer.st : 'idle';
-  peer = m; peerAt = Date.now();
-  if (cfg.role === 'rider' && m.st === 'here' && myStatus === 'want') { myStatus = 'idle'; sess.save(); send(true); }
-  checkArrive();
-  if (m.st !== prev && (m.st === 'want' || m.st === 'onway' || m.st === 'here')) buzz();
-  render(); fit(); updateRoute();
+async function onMessage(topic, buf) {
+  const p = pairs.find(x => topic.startsWith(x.topic + '/'));
+  if (!p) return;
+  let m; try { m = await unseal(p.key, buf.toString()); } catch { return; }
+  if (m.id === my.id) return;
+  if (m.r === p.role) { p.clash = true; if (p === cur) render(); return; }
+  p.clash = false;
+  if (m.t <= p.lastT) return;                             // duplicate from the second relay, or old
+  p.lastT = m.t;
+  if (Date.now() - m.t > RESUME_MS) m.st = 'idle';        // a leftover request from hours ago is not a request
+  const prev = p.peer ? p.peer.st : 'idle';
+  p.peer = m; p.peerAt = Math.min(Date.now(), m.t);
+  if (p.role === 'rider' && m.st === 'here' && p.st === 'want') { p.st = 'idle'; sess.save(); send(true); }
+  if (m.st !== prev && (m.st === 'want' || m.st === 'onway' || m.st === 'here')) { buzz(); if (p !== cur) showAlert(p); }
+  else if (p === alertPair && m.st === 'idle') hideAlert();
+  if (p === cur) { render(); fit(); checkArrive(); updateRoute(); }
 }
 function checkArrive() {   // driver pulls up next to rider -> flips to "I'm here" by itself
-  if (cfg.role !== 'driver' || myStatus !== 'onway' || !me || !peer || peer.off) return;
-  if (Date.now() - peerAt > STALE_MS || meters(me, peer) > 75) return;
-  myStatus = 'here'; sess.save(); buzz(); send(true); render();
+  const p = cur;
+  if (!p || p.role !== 'driver' || p.st !== 'onway' || !me || !p.peer || p.peer.off) return;
+  if (Date.now() - p.peerAt > STALE_MS || meters(me, p.peer) > 75) return;
+  p.st = 'here'; sess.save(); buzz(); send(true); render();
 }
 function buzz() {
   try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch {}
@@ -347,17 +385,34 @@ function buzz() {
   } catch {}
 }
 function connect() {
-  disconnect();
+  if (clients.length) return;
   for (const url of BROKERS) {
-    const c = mqtt.connect(url, { clientId: 'huber_' + cfg.id + '_' + Math.random().toString(36).slice(2, 8),
+    const c = mqtt.connect(url, { clientId: 'cp_' + my.id + '_' + Math.random().toString(36).slice(2, 8),
       clean: true, reconnectPeriod: 4000, connectTimeout: 10000, keepalive: 30 });
-    c.on('connect', () => { c.subscribe(topicBase + '/+'); render(); send(true); });
+    c.on('connect', () => { for (const p of pairs) c.subscribe(p.topic + '/+'); render(); send(true); });
     c.on('close', render); c.on('error', () => {});
     c.on('message', onMessage);
     clients.push(c);
   }
 }
-function disconnect() { while (clients.length) { try { clients.pop().end(true); } catch {} } }
+
+// ---------- pairings ----------
+function switchTo(p) {
+  if (p === alertPair) hideAlert();
+  if (p === cur) { render(); return; }
+  cur = p; saveStore(); clearRoute(); routeAt = 0;
+  if (mkPeer) { mkPeer.remove(); mkPeer = null; }
+  follow = true;
+  $('settings').classList.remove('show');
+  render(); fit(); send(true); updateRoute();
+}
+async function addPair(rec) {
+  const p = await mkPair(rec);
+  pairs.push(p);
+  for (const c of clients) if (c.connected) c.subscribe(p.topic + '/+');
+  switchTo(p); connect();
+  return p;
+}
 
 // ---------- location ----------
 async function lockScreen() {
@@ -367,17 +422,19 @@ function startSharing() {
   if (!('geolocation' in navigator)) { $('sub').textContent = 'This browser has no location support.'; return; }
   if (!window.isSecureContext) { $('sub').textContent = 'Location needs an https:// address.'; return; }
   sharing = true; sess.save(); render();
-  watchId = navigator.geolocation.watchPosition(p => {
-    me = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy };
-    render(); fit(); checkArrive(); send(); updateRoute();
+  watchId = navigator.geolocation.watchPosition(pos => {
+    const first = !me;
+    me = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+    render(); fit(); checkArrive(); send(first); updateRoute();
   }, e => {
     if (e.code === 1) { stopSharing(); $('headline').textContent = 'Location blocked'; $('sub').textContent = 'Allow location for this site in your phone’s browser settings, then try again.'; }
   }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
   hb = setInterval(() => { sess.save(); send(true); }, HEARTBEAT_MS);
-  lockScreen();
+  lockScreen(); send(true);
 }
 function stopSharing() {
-  sharing = false;
+  sharing = false; me = null;
+  if (mkMe) { mkMe.remove(); mkMe = null; } if (accMe) { accMe.remove(); accMe = null; }
   if (watchId !== null) navigator.geolocation.clearWatch(watchId); watchId = null;
   clearInterval(hb); hb = null;
   try { wake && wake.release(); } catch {} wake = null;
@@ -388,74 +445,114 @@ document.addEventListener('visibilitychange', () => {
 });
 setInterval(render, 5000);
 
-// ---------- buttons ----------
+// ---------- main buttons ----------
 $('shareBtn').onclick = () => sharing ? stopSharing() : startSharing();
 $('actBtn').onclick = () => {
-  if (cfg.role === 'rider') myStatus = myStatus === 'want' ? 'idle' : 'want';
-  else myStatus = myStatus === 'idle' ? 'onway' : myStatus === 'onway' ? 'here' : 'idle';
+  const p = cur; if (!p) return;
+  if (p.role === 'rider') p.st = p.st === 'want' ? 'idle' : 'want';
+  else p.st = p.st === 'idle' ? 'onway' : p.st === 'onway' ? 'here' : 'idle';
   sess.save();
-  if (!sharing && myStatus !== 'idle') startSharing();
-  send(true); render();
+  if (!sharing && p.st !== 'idle') startSharing(); else send(true);
+  render();
 };
 $('recenter').onclick = () => { follow = true; fit(); };
-$('gear').onclick = () => {
-  $('linkOut').value = location.origin + location.pathname + '#p=' + cfg.code;
-  $('linkMsg').textContent = ''; $('settings').classList.add('show');
-};
+
+// ---------- settings ----------
+function openSettings() {
+  if (!cur) return;
+  const list = $('pairList'); list.textContent = '';
+  for (const p of pairs) {
+    const b = document.createElement('button'), n = document.createElement('span'), r = document.createElement('small');
+    b.className = 'pairRow' + (p === cur ? ' sel' : '');
+    n.textContent = EMOJI[OTHER[p.role]] + ' ' + p.name; r.textContent = 'I’m the ' + p.role;
+    b.append(n, r); b.onclick = () => { switchTo(p); $('settings').classList.remove('show'); };
+    list.append(b);
+  }
+  $('curTitle').textContent = 'On screen: ' + cur.name;
+  $('renameIn').value = cur.name;
+  $('linkOut').value = location.origin + location.pathname + '#p=' + cur.code;
+  $('linkMsg').textContent = ''; $('unpair').textContent = 'Remove this pairing'; unpairArmed = false;
+  $('settings').classList.add('show');
+}
+$('gear').onclick = openSettings; $('pairPill').onclick = openSettings;
 $('closeSettings').onclick = () => $('settings').classList.remove('show');
+$('renameIn').onchange = () => { const v = $('renameIn').value.trim(); if (v && cur) { cur.name = v; saveStore(); render(); openSettings(); } };
 $('sendLink').onclick = async () => {
   const url = $('linkOut').value;
-  try { if (navigator.share) { await navigator.share({ title: 'Huber', text: 'Open this to pair with me on Huber', url }); return; } } catch { return; }
+  try { if (navigator.share) { await navigator.share({ title: 'Carpooled', text: 'Open this to pair with me on Carpooled', url }); return; } } catch { return; }
   try { await navigator.clipboard.writeText(url); $('linkMsg').textContent = 'Link copied — text it to the other phone.'; }
   catch { $('linkOut').select(); $('linkMsg').textContent = 'Copy the link above and text it to the other phone.'; }
 };
 $('swapRole').onclick = () => {
-  if (sharing) stopSharing();
-  cfg.role = OTHER[cfg.role]; store.set(cfg); myStatus = 'idle'; sess.save(); roleClash = false; peer = null;
-  if (mkMe) { mkMe.remove(); mkMe = null; } if (mkPeer) { mkPeer.remove(); mkPeer = null; }
-  connect(); render(); $('settings').classList.remove('show');
+  const p = cur; if (!p) return;
+  publish(p.topic + '/' + p.role, '');                    // wipe my last message under the old role
+  p.role = OTHER[p.role]; p.st = 'idle'; p.peer = null; p.lastT = 0; p.clash = false;
+  saveStore(); sess.save(); clearRoute();
+  send(true); render(); $('settings').classList.remove('show');
 };
-$('unpair').onclick = () => { if (sharing) stopSharing(); setTimeout(() => { disconnect(); store.clear(); sess.clear(); location.hash = ''; location.reload(); }, 400); };
+let unpairArmed = false;
+$('unpair').onclick = async () => {
+  if (!unpairArmed) { unpairArmed = true; $('unpair').textContent = 'Tap again to remove “' + cur.name + '”'; return; }
+  const p = cur, rest = pairs.filter(x => x !== p);
+  if (!rest.length && sharing) stopSharing();
+  p.st = 'idle';
+  publish(p.topic + '/' + p.role, await seal(p.key, { r: p.role, id: my.id, t: Date.now(), off: true, st: 'idle' }));
+  publish(p.topic + '/' + p.role, '');
+  for (const c of clients) if (c.connected) c.unsubscribe(p.topic + '/+');
+  pairs = rest; if (alertPair === p) hideAlert();
+  if (rest.length) { cur = null; switchTo(rest[0]); sess.save(); openSettings(); }
+  else { cur = null; saveStore(); sess.save(); setTimeout(() => location.reload(), 400); }
+};
+$('addPair').onclick = () => { $('settings').classList.remove('show'); openSetup(null); };
 
 // ---------- setup ----------
-let pickedRole = null;
-const linkCode = parseCode(location.hash);
+let pickedRole = null, setupLink = null;
+function openSetup(linkCode) {
+  setupLink = linkCode; pickedRole = null;
+  document.querySelectorAll('#setup [data-role]').forEach(x => x.classList.remove('sel'));
+  $('nameIn').value = ''; $('codeIn').value = ''; $('setupErr').textContent = '';
+  $('pairNew').style.display = linkCode ? 'none' : 'block';
+  $('pairLink').style.display = linkCode ? 'block' : 'none';
+  $('cancelSetup').style.display = pairs.length ? 'block' : 'none';
+  $('setup').classList.add('show');
+}
 document.querySelectorAll('#setup [data-role]').forEach(b => b.onclick = () => {
   pickedRole = b.dataset.role;
   document.querySelectorAll('#setup [data-role]').forEach(x => x.classList.toggle('sel', x === b));
   $('setupErr').textContent = '';
 });
-function finishSetup(code) {
+async function finishSetup(code, isNew) {
+  const name = $('nameIn').value.trim();
   if (!pickedRole) { $('setupErr').textContent = 'Pick driver or rider first.'; return; }
-  if (!code) { $('setupErr').textContent = 'That doesn’t look like a Huber invite link or code.'; return; }
-  const isNew = !linkCode && code !== parseCode($('codeIn').value);
-  cfg = { code, role: pickedRole, id: Math.random().toString(36).slice(2, 10) };
-  store.set(cfg);
-  try { history.replaceState(null, '', location.pathname); } catch {}
+  if (!name) { $('setupErr').textContent = 'Give the other person a name so you can tell pairings apart.'; return; }
+  if (!code) { $('setupErr').textContent = 'That doesn’t look like a Carpooled invite link or code.'; return; }
   $('setup').classList.remove('show');
-  boot().then(() => { if (isNew) $('gear').onclick(); });
+  const have = pairs.find(p => p.code === code);
+  if (have) { switchTo(have); return; }
+  await addPair({ code, role: pickedRole, name });
+  if (isNew) openSettings();
 }
-$('createBtn').onclick = () => finishSetup(newCode());
-$('joinBtn').onclick = () => finishSetup(parseCode($('codeIn').value));
-$('joinLinkBtn').onclick = () => finishSetup(linkCode);
+$('createBtn').onclick = () => finishSetup(newCode(), true);
+$('joinBtn').onclick = () => finishSetup(parseCode($('codeIn').value), false);
+$('joinLinkBtn').onclick = () => finishSetup(setupLink, false);
+$('cancelSetup').onclick = () => $('setup').classList.remove('show');
 
-async function boot() {
-  if (!window.crypto || !crypto.subtle) { $('headline').textContent = 'Needs https://'; $('sub').textContent = 'Open Huber from its https:// address.'; return; }
-  await deriveKeys(cfg.code);
-  const prev = sess.load();
-  if (prev) myStatus = prev.st || 'idle';
-  render(); connect();
-  if (prev && prev.sharing) startSharing();   // closed mid-trip: carry on where it left off
-}
-
-if (linkCode && (!cfg || cfg.code !== linkCode)) {
-  $('pairNew').style.display = 'none'; $('pairLink').style.display = 'block'; $('setup').classList.add('show');
-} else if (!cfg) {
-  $('setup').classList.add('show');
-} else {
+// ---------- boot ----------
+(async () => {
+  const linkCode = parseCode(location.hash);
   try { history.replaceState(null, '', location.pathname); } catch {}
-  boot();
-}
+  if (!window.crypto || !crypto.subtle) {
+    $('headline').textContent = 'Needs https://'; $('sub').textContent = 'Open Carpooled from its https:// address.'; return;
+  }
+  pairs = await Promise.all(my.pairs.map(mkPair));
+  const prev = sess.load();
+  if (prev && prev.st) for (const p of pairs) p.st = prev.st[p.code] || 'idle';
+  const linked = linkCode && pairs.find(p => p.code === linkCode);
+  cur = linked || pairs.find(p => p.code === my.active) || pairs[0] || null;
+  if (cur) { saveStore(); render(); connect(); if (prev && prev.sharing) startSharing(); }
+  if (linkCode && !linked) openSetup(linkCode);
+  else if (!cur) openSetup(null);
+})();
 })();
 </script>
 </body>
